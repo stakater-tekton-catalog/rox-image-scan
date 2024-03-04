@@ -5,7 +5,7 @@ kind: Task
 metadata:
   name: stakater-rox-image-scan
   labels:
-    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/version: "0.0.5"
 spec:
   params:
     - name: ROX_CENTRAL_ENDPOINT
@@ -16,8 +16,8 @@ spec:
     - name: ROX_API_TOKEN
       description: Secret containing the StackRox API token with CI permissions
       type: string
-    - name: IMAGE
-      description: 'Full name of image to scan (example -- gcr.io/rox/sample:5.0-rc1)'
+    - name: IMAGE_NAME
+      description: Reference of the image buildah will produce.
       type: string
     - name: OUTPUT_FORMAT
       description: Output format (json | csv | pretty)
@@ -30,6 +30,11 @@ spec:
       default: 'true'
       description: Flag specifying whether image should be built again.
       type: string
+    - name: IMAGE_REGISTRY
+      type: string
+      default: 'NA'
+      description: Image registry url.
+      optional: true
   steps:
     - env:
         - name: ROX_API_TOKEN
@@ -42,6 +47,12 @@ spec:
             secretKeyRef:
               key: rox-central-endpoint
               name: $(params.ROX_CENTRAL_ENDPOINT)
+        - name: IMAGE_REGISTRY
+          valueFrom:
+            secretKeyRef:
+              name: docker-reg-creds
+              key: url
+              optional: true
       image: 'registry.access.redhat.com/ubi8/ubi-minimal:latest'
       name: rox-image-scan
       command: ["/bin/bash"]
@@ -59,10 +70,13 @@ spec:
           
             chmod +x ./roxctl > /dev/null
           
-            echo "## Scanning image $(params.IMAGE)@$(params.IMAGE_DIGEST)"
-          
-            ./roxctl image scan --insecure-skip-tls-verify -e $ROX_CENTRAL_ENDPOINT --image $(params.IMAGE)@$(params.IMAGE_DIGEST) --format $(params.OUTPUT_FORMAT)
-          
+            if [ $(params.IMAGE_REGISTRY) != "NA" ]; then
+              echo "## Scanning image $(params.IMAGE_REGISTRY)/$(params.IMAGE_NAME)@$(params.IMAGE_DIGEST)"
+              ./roxctl image scan --insecure-skip-tls-verify -e $ROX_CENTRAL_ENDPOINT --image $(params.IMAGE_REGISTRY)/$(params.IMAGE_NAME)@$(params.IMAGE_DIGEST) --format $(params.OUTPUT_FORMAT)
+            else
+              echo "## Scanning image ${IMAGE_REGISTRY}/$(params.IMAGE_NAME)@$(params.IMAGE_DIGEST)"
+              ./roxctl image scan --insecure-skip-tls-verify -e $ROX_CENTRAL_ENDPOINT --image ${IMAGE_REGISTRY}/$(params.IMAGE_NAME)@$(params.IMAGE_DIGEST) --format $(params.OUTPUT_FORMAT)
+            fi
             echo "## Go to
             https://$ROX_CENTRAL_ENDPOINT/main/vulnerability-management/image/$(params.IMAGE_DIGEST)
             to check more info"
